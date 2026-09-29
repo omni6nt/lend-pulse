@@ -2,77 +2,51 @@
 
 Briefing for coding agents in this app (Cursor, Claude Code, Codex). Claude Code loads it through `CLAUDE.md`.
 
-This is a Scaffold-HBAR dApp: Next.js App Router, wallet connect, Debug Contracts, and Hedera networks (testnet, mainnet, local fork). The CLI may have left only Hardhat or only Foundry.
+This is a Scaffold-HBAR dApp: Next.js App Router, wallet connect, and Hedera testnet config. Built with the Hardhat package (Foundry was not selected at scaffold time and is not present).
 
-Use the package manager this project was created with (`packageManager` in the root `package.json`, or the lockfile). Examples use `yarn`; if the app was created with npm, swap `yarn <script>` for `npm run <script>`.
+Use the package manager this project was created with (`packageManager` in the root `package.json`, or the lockfile). This project uses `yarn`.
 
-## Which Solidity package
+## What this project actually does
 
-- `packages/hardhat` exists → Hardhat (`hardhat-deploy`)
-- `packages/foundry` exists → Foundry (Forge scripts)
-- `packages/nextjs` is always the frontend (App Router, RainbowKit, Wagmi, Viem, DaisyUI)
+`lend-pulse` reads a wallet's live lending position from **Bonzo Finance** — an already-deployed, third-party Aave V2-based lending protocol on Hedera testnet — and lets a user anchor a point-in-time "risk snapshot" of that position to Hedera Consensus Service (HCS). This is a **read-only integration**: we do not deploy, own, or modify any contracts. All contract calls target Bonzo's existing deployed addresses.
 
-Follow only the flavor that is present.
+There is no custom Solidity in this project. `packages/hardhat` exists from the base scaffold but is currently unused — no contracts, no deploy scripts. If you add contracts here in the future, follow the standard Scaffold-HBAR Hardhat layout (`contracts/`, `deploy/`, `test/`, `hardhat.config.ts`), and remember that any newly deployed contract's ABI/address gets written to `packages/nextjs/contracts/deployedContracts.ts` automatically — don't hand-edit that file.
+
+## Layout
+
+- `packages/nextjs/app/monitor/page.tsx` — the main feature. Reads Bonzo's `getUserAccountData` and `getAllReservesTokens`, displays the result, and calls `/api/snapshot` when the user clicks "Record Snapshot". Also reads snapshot history directly from Hedera's public Mirror Node REST API (no server involved for reads).
+- `packages/nextjs/app/api/snapshot/route.ts` — the only place Hedera operator credentials (`HEDERA_OPERATOR_ID`, `HEDERA_OPERATOR_KEY`) are used. Signs and submits an HCS `TopicMessageSubmitTransaction` server-side. Never move this signing logic to client-side code.
+- `packages/nextjs/contracts/externalContracts.ts` — registers Bonzo's `AaveProtocolDataProvider` and `LendingPool` contracts (already deployed on Hedera testnet, chain ID `296`) with the ABI functions this project actually calls. This is the pattern to follow for registering any other third-party contract — do not put external contracts in `deployedContracts.ts`, that file is for contracts this project deploys itself.
+- `packages/nextjs/scripts/createTopic.mjs` — one-time script to create a new HCS topic. Run manually, not part of the app's runtime.
 
 ## Commands
 
-Package-prefixed scripts for package-specific work. Keep only truly cross-workspace commands unprefixed.
-
 ```bash
-# Local chain + deploy + frontend (separate terminals)
-yarn hardhat:chain    # Hedera-forked Hardhat node on 8545
-yarn hardhat:deploy --network localhost
-yarn foundry:chain    # Anvil from the Foundry package
-yarn foundry:deploy
-yarn next:start       # http://localhost:3000
-
-# Frontend only
+# Frontend dev server
 yarn next:dev
+
+# Type check
+yarn next:check-types
 
 # Quality / build
 yarn lint
 yarn format
 yarn next:build
 yarn hardhat:compile
-yarn foundry:compile
 
-# Live networks
-yarn hardhat:deploy --network hederaTestnet   # or hederaMainnet
-yarn foundry:deploy --network hedera_testnet  # or hedera_mainnet
-yarn hardhat:verify:testnet
-yarn foundry:verify:testnet
-
-# Deployer account
-yarn hardhat:account:generate
-yarn hardhat:account:import
-yarn hardhat:account
+# Create an HCS topic (one-time setup, needs .env.local populated first)
+node --env-file=packages/nextjs/.env.local packages/nextjs/scripts/createTopic.mjs
 ```
 
-`yarn hardhat:deploy` without `--network localhost` targets the in-process `hardhat` network, not the long-running fork.
+## Environment
 
-## Layout
-
-### Hardhat
-
-- Contracts: `packages/hardhat/contracts/`
-- Deploy scripts: `packages/hardhat/deploy/`
-- Tests: `packages/hardhat/test/`
-- Config: `packages/hardhat/hardhat.config.ts`
-- Tagged deploy: if `deployHederaToken.tags = ["HederaToken"]`, run `yarn hardhat:deploy --tags HederaToken`
-
-### Foundry
-
-- Contracts: `packages/foundry/contracts/`
-- Deploy scripts: `packages/foundry/script/` (`Deploy.s.sol`, `DeployHederaToken.s.sol`, `DeployHtsTokenCreator.s.sol`)
-- Tests: `packages/foundry/test/`
-- Config: `packages/foundry/foundry.toml`
-- One contract: `yarn foundry:deploy --file DeployHederaToken.s.sol`
-
-### After deploy
-
-ABIs and addresses are written to `packages/nextjs/contracts/deployedContracts.ts`. Put third-party contracts in `packages/nextjs/contracts/externalContracts.ts`.
-
-Sample contracts on this starter: `HederaToken` (ERC-20) and `HtsTokenCreator` (HTS precompile at `0x167`).
+`packages/nextjs/.env.local` (not committed) needs:
+```
+HEDERA_OPERATOR_ID=0.0.xxxxx
+HEDERA_OPERATOR_KEY=...
+HEDERA_TOPIC_ID=0.0.xxxxx
+```
+None of these should ever be prefixed `NEXT_PUBLIC_` — that would expose the operator key to the browser.
 
 ## Frontend contract interaction
 
@@ -84,38 +58,28 @@ Hooks live in `packages/nextjs/hooks/scaffold-hbar`. Use the names that exist in
 Also: `useScaffoldWatchContractEvent`, `useScaffoldEventHistory`, `useDeployedContractInfo`, `useScaffoldContract`, `useTransactor`.
 
 ```typescript
-const { data: balance } = useScaffoldReadContract({
-  contractName: "HederaToken",
-  functionName: "balanceOf",
-  args: [connectedAddress],
-});
-
-const { writeContractAsync, isPending } = useScaffoldWriteContract({
-  contractName: "HederaToken",
-});
-
-await writeContractAsync({
-  functionName: "mint",
-  args: [connectedAddress, parseEther("1")],
+const { data: account } = useScaffoldReadContract({
+  contractName: "BonzoLendingPool",
+  functionName: "getUserAccountData",
+  args: [walletAddress],
 });
 ```
 
-`HederaToken.mint` is `onlyOwner`. For HTS creation, `HtsTokenCreator.createToken` is payable (HTS fee via `msg.value`) and emits `TokenCreated`.
+This project only reads (`useScaffoldReadContract`) — it never writes to Bonzo's contracts. The only "write" in this app is the HCS submission, which happens server-side in `/api/snapshot`, not through a wagmi write hook.
 
 ### UI
 
-Use `@scaffold-hbar-ui/components` for web3 UI: `Address`, `AddressInput`, `Balance`, `EtherInput`, `IntegerInput`.
+Use `@scaffold-hbar-ui/components` for web3 UI where applicable: `Address`, `AddressInput`, `Balance`, `EtherInput`, `IntegerInput`.
 
 Use DaisyUI classes, not raw Tailwind when a DaisyUI component exists:
 
 ```tsx
-<button className="btn btn-primary">Connect</button>
+<button className="btn btn-primary">Record Snapshot</button>
 ```
 
 ### Networks
 
-- Hardhat: `packages/hardhat/hardhat.config.ts` (`hederaTestnet` 296, `hederaMainnet` 295)
-- Foundry: `packages/foundry/foundry.toml` (`hedera_testnet`, `hedera_mainnet`)
+- Hardhat: `packages/hardhat/hardhat.config.ts` (`hederaTestnet` 296)
 - Next.js: `packages/nextjs/scaffold.config.ts` (target networks, polling, RPC overrides, WalletConnect)
 
 ## Style
@@ -125,7 +89,6 @@ Use DaisyUI classes, not raw Tailwind when a DaisyUI component exists:
 | `UpperCamelCase` | types, components |
 | `lowerCamelCase` | variables, functions |
 | `CONSTANT_CASE` | constants |
-| `snake_case` | Hardhat deploy files and Foundry scripts |
 
 Next.js imports use the `~~` alias:
 

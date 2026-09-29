@@ -38,7 +38,8 @@
     "next:start": "yarn workspace @sh/nextjs start",
     "postinstall": "husky",
     "precommit": "lint-staged",
-    "lint-staged": "lint-staged"
+    "lint-staged": "lint-staged",
+    "harness:run": "hedera-harness run .harness/spec.yaml"
   },
   "packageManager": "yarn@3.2.3",
   "devDependencies": {
