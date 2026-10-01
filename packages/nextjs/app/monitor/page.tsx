@@ -13,6 +13,8 @@ const Monitor = () => {
   const [recordResult, setRecordResult] = useState<{
     sequenceNumber?: string;
     transactionId?: string;
+    hashscanUrl?: string;
+    mirrorNodeUrl?: string;
   } | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
 
@@ -65,6 +67,16 @@ const Monitor = () => {
       : formatUnits(account[5], 18)
     : undefined;
 
+  const riskStatus = account
+    ? account[5] === maxUint256
+      ? "No Debt"
+      : Number(formatUnits(account[5], 18)) < 1
+        ? "At Risk"
+        : Number(formatUnits(account[5], 18)) < 1.2
+          ? "Caution"
+          : "Healthy"
+    : undefined;
+
   const handleRecordSnapshot = async () => {
     if (!account || !target) return;
 
@@ -86,6 +98,7 @@ const Monitor = () => {
           liquidationThreshold,
           ltv,
           healthFactor: healthFactorDisplay,
+          riskStatus,
         }),
       });
 
@@ -165,6 +178,7 @@ const Monitor = () => {
             <p>Liquidation threshold: {liquidationThreshold}</p>
             <p>Max LTV: {ltv}</p>
             <p>Health factor: {healthFactorDisplay}</p>
+            <p>Risk status: {riskStatus}</p>
 
             <button className="btn btn-primary mt-4" disabled={recording} onClick={handleRecordSnapshot}>
               {recording ? "Recording..." : "Record Snapshot"}
@@ -176,14 +190,14 @@ const Monitor = () => {
           <div className="mt-3 text-sm">
             <p className="text-green-600">Recorded — sequence #{recordResult.sequenceNumber}</p>
 
-            {recordResult.transactionId && (
-              <a
-                className="link"
-                href={`https://hashscan.io/testnet/transaction/${recordResult.transactionId}`}
-                target="_blank"
-                rel="noreferrer"
-              >
+            {recordResult.hashscanUrl && (
+              <a className="link block" href={recordResult.hashscanUrl} target="_blank" rel="noreferrer">
                 View on HashScan
+              </a>
+            )}
+            {recordResult.mirrorNodeUrl && (
+              <a className="link block" href={recordResult.mirrorNodeUrl} target="_blank" rel="noreferrer">
+                View raw message on Mirror Node
               </a>
             )}
           </div>
@@ -232,9 +246,17 @@ const Monitor = () => {
               </p>
 
               <p>
-                collateral: {String(entry.message.totalCollateral)} · debt: {String(entry.message.totalDebt)} · account:{" "}
-                {String(entry.message.account)}
+                collateral: {String(entry.message.totalCollateral)} · debt: {String(entry.message.totalDebt)} · risk:{" "}
+                {String(entry.message.riskStatus ?? "—")} · account: {String(entry.message.account)}
               </p>
+              <a
+                className="link"
+                href={`https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10759541/messages/${entry.sequenceNumber}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View raw message
+              </a>
             </li>
           ))}
         </ul>

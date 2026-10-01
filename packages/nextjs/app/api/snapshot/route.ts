@@ -11,6 +11,7 @@ const FIELDS = [
   "liquidationThreshold",
   "ltv",
   "healthFactor",
+  "riskStatus",
 ] as const;
 
 export async function POST(request: Request) {
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
   }
 
   const snapshot = {
-    version: 1,
+    schema: "lend-pulse.snapshot.v1",
     source: "bonzo",
     network: "hedera-testnet",
     account: body.account,
@@ -43,6 +44,7 @@ export async function POST(request: Request) {
     liquidationThreshold: body.liquidationThreshold,
     ltv: body.ltv,
     healthFactor: body.healthFactor,
+    riskStatus: body.riskStatus,
   };
 
   const client = Client.forTestnet();
@@ -53,10 +55,13 @@ export async function POST(request: Request) {
       .setMessage(JSON.stringify(snapshot))
       .execute(client);
     const receipt = await tx.getReceipt(client);
+    const transactionId = tx.transactionId.toString();
     return NextResponse.json({
       topicId,
       sequenceNumber: receipt.topicSequenceNumber?.toString(),
-      transactionId: tx.transactionId.toString(),
+      transactionId,
+      hashscanUrl: `https://hashscan.io/testnet/transaction/${transactionId}`,
+      mirrorNodeUrl: `https://testnet.mirrornode.hedera.com/api/v1/topics/${topicId}/messages/${receipt.topicSequenceNumber?.toString()}`,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

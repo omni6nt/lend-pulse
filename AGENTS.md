@@ -15,7 +15,7 @@ There is no custom Solidity in this project. `packages/hardhat` exists from the 
 ## Layout
 
 - `packages/nextjs/app/monitor/page.tsx` — the main feature. Reads Bonzo's `getUserAccountData` and `getAllReservesTokens`, displays the result, and calls `/api/snapshot` when the user clicks "Record Snapshot". Also reads snapshot history directly from Hedera's public Mirror Node REST API (no server involved for reads).
-- `packages/nextjs/app/api/snapshot/route.ts` — the only place Hedera operator credentials (`HEDERA_OPERATOR_ID`, `HEDERA_OPERATOR_KEY`) are used. Signs and submits an HCS `TopicMessageSubmitTransaction` server-side. Never move this signing logic to client-side code.
+- `packages/nextjs/app/api/snapshot/route.ts` — the only place Hedera operator credentials (`HEDERA_OPERATOR_ID`, `HEDERA_OPERATOR_KEY`) are used. Signs and submits an HCS `TopicMessageSubmitTransaction` server-side, using the versioned `lend-pulse.snapshot.v1` schema. Never move this signing logic to client-side code. Covered by `route.test.ts` with a mocked Hedera SDK, don't let tests touch the live network.
 - `packages/nextjs/contracts/externalContracts.ts` — registers Bonzo's `AaveProtocolDataProvider` and `LendingPool` contracts (already deployed on Hedera testnet, chain ID `296`) with the ABI functions this project actually calls. This is the pattern to follow for registering any other third-party contract — do not put external contracts in `deployedContracts.ts`, that file is for contracts this project deploys itself.
 - `packages/nextjs/scripts/createTopic.mjs` — one-time script to create a new HCS topic. Run manually, not part of the app's runtime.
 
@@ -33,6 +33,7 @@ yarn lint
 yarn format
 yarn next:build
 yarn hardhat:compile
+yarn workspace @sh/nextjs test
 
 # Create an HCS topic (one-time setup, needs .env.local populated first)
 node --env-file=packages/nextjs/.env.local packages/nextjs/scripts/createTopic.mjs
