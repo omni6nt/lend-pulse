@@ -72,6 +72,7 @@ describe("/api/snapshot", () => {
     process.env.HEDERA_OPERATOR_ID = "0.0.12345";
     process.env.HEDERA_OPERATOR_KEY = "fake-key";
     process.env.HEDERA_TOPIC_ID = "0.0.99999";
+    process.env.ENABLE_SNAPSHOT_WRITES = "true";
     mockReadContract.mockReset();
     mockReadContract.mockResolvedValue(NO_DEBT_ACCOUNT_DATA);
   });
@@ -79,6 +80,14 @@ describe("/api/snapshot", () => {
   afterEach(() => {
     process.env = { ...originalEnv };
     vi.clearAllMocks();
+  });
+
+  it("rejects writes when ENABLE_SNAPSHOT_WRITES is not set to true", async () => {
+    process.env.ENABLE_SNAPSHOT_WRITES = "false";
+    const res = await POST(makeRequest({ account: VALID_ADDRESS }));
+    expect(res.status).toBe(403);
+    const data = await res.json();
+    expect(data.error).toMatch(/disabled/i);
   });
 
   it("rejects a request with no account address", async () => {

@@ -78,7 +78,7 @@ The account summary shows a risk status (No Debt, Healthy, Caution, At Risk) der
 
 - Next.js App Router with wallet connect (inherited from Scaffold-HBAR)
 - `/monitor` page: paste any Hedera EVM wallet address, or use your connected wallet, to read its Bonzo position, collateral, debt, available borrows, liquidation threshold, LTV, health factor, and risk status, read via `getUserAccountData`
-- `Record Snapshot` button: sends the currently displayed values to a server-side API route, which anchors them to HCS using a versioned schema (`lend-pulse.snapshot.v1`)
+- `Record Snapshot` button: sends the wallet address to a server-side API route, which independently re-reads the position from Bonzo and anchors the result to HCS
 - `/api/snapshot` (Next.js API route): the only place that touches Hedera operator credentials. Signs and submits the HCS message server-side, so keys never reach the browser
 - Automated tests (`yarn workspace @sh/nextjs test`): cover input validation, missing configuration, successful submission, and HCS failure handling for `/api/snapshot`, using a mocked Hedera SDK so tests run fast and don't touch the live network
 - Snapshot history: reads past snapshots back from Hedera's public Mirror Node, with consensus timestamps and a per-entry raw message link

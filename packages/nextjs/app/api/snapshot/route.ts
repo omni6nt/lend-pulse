@@ -40,6 +40,13 @@ function riskStatusFor(healthFactor: bigint): string {
 }
 
 export async function POST(request: Request) {
+  if (process.env.ENABLE_SNAPSHOT_WRITES !== "true") {
+    return NextResponse.json(
+      { error: "Snapshot writes are disabled. Set ENABLE_SNAPSHOT_WRITES=true in .env.local to enable them." },
+      { status: 403 },
+    );
+  }
+
   const operatorId = process.env.HEDERA_OPERATOR_ID;
   const operatorKey = process.env.HEDERA_OPERATOR_KEY;
   const topicId = process.env.HEDERA_TOPIC_ID;

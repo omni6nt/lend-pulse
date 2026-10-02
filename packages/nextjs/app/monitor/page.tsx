@@ -1,9 +1,57 @@
 "use client";
 
-import { useState } from "react";
-import { formatUnits, isAddress, maxUint256 } from "viem";
+import { useEffect, useState } from "react";
+import { type Address, formatUnits, isAddress, maxUint256 } from "viem";
 import { useAccount } from "wagmi";
 import { useScaffoldReadContract } from "~~/hooks/scaffold-hbar";
+
+type Reserve = { symbol: string; tokenAddress: string };
+
+const ReserveRow = ({ reserve, target }: { reserve: Reserve; target: Address | undefined }) => {
+  const { data: config } = useScaffoldReadContract({
+    contractName: "BonzoDataProvider",
+    functionName: "getReserveConfigurationData",
+    args: [reserve.tokenAddress as Address],
+  });
+
+  const { data: userData } = useScaffoldReadContract({
+    contractName: "BonzoDataProvider",
+    functionName: "getUserReserveData",
+    args: [reserve.tokenAddress as Address, target],
+  });
+
+  if (!config) {
+    return (
+      <tr>
+        <td className="font-mono">{reserve.symbol}</td>
+        <td colSpan={5} className="text-xs text-gray-500">
+          Loading...
+        </td>
+      </tr>
+    );
+  }
+
+  const [, ltv, liquidationThreshold, , , , , , isActive, isFrozen] = config;
+  const supplied = userData ? formatUnits(userData[0], 18) : "—";
+  const variableDebt = userData ? formatUnits(userData[2], 18) : "—";
+  const isCollateral = userData ? userData[8] : false;
+
+  return (
+    <tr className={!isActive || isFrozen ? "opacity-50" : ""}>
+      <td className="font-mono">{reserve.symbol}</td>
+      <td>{Number(ltv) / 100}%</td>
+      <td>{Number(liquidationThreshold) / 100}%</td>
+      <td>{supplied}</td>
+      <td>{variableDebt}</td>
+      <td>{target ? (isCollateral ? "Yes" : "No") : "—"}</td>
+      <td className="text-xs">
+        {!isActive && "Inactive"}
+        {isActive && isFrozen && "Frozen"}
+        {isActive && !isFrozen && "Active"}
+      </td>
+    </tr>
+  );
+};
 
 const Monitor = () => {
   const { address: connectedAddress } = useAccount();
@@ -27,7 +75,7 @@ const Monitor = () => {
   >([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  const target = isAddress(input) ? input : connectedAddress;
+  const target: Address | undefined = isAddress(input) ? (input as Address) : connectedAddress;
 
   const {
     data: reserves,
@@ -48,17 +96,10 @@ const Monitor = () => {
     args: [target],
   });
 
-  // Bonzo's getUserAccountData returns:
-  // [totalCollateral, totalDebt, availableBorrows,
-  //  liquidationThreshold, ltv, healthFactor]
   const totalCollateral = account ? formatUnits(account[0], 18) : undefined;
-
   const totalDebt = account ? formatUnits(account[1], 18) : undefined;
-
   const availableBorrows = account ? formatUnits(account[2], 18) : undefined;
-
   const liquidationThreshold = account ? `${Number(account[3]) / 100}%` : undefined;
-
   const ltv = account ? `${Number(account[4]) / 100}%` : undefined;
 
   const healthFactorDisplay = account
@@ -87,9 +128,7 @@ const Monitor = () => {
     try {
       const response = await fetch("/api/snapshot", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ account: target }),
       });
 
@@ -140,6 +179,11 @@ const Monitor = () => {
     }
   };
 
+  // mount-only: loadHistory closes over env and setters, and must not retrigger
+  useEffect(() => {
+    void loadHistory();
+  }, []);
+
   return (
     <div className="flex flex-col items-center gap-8 px-4 pt-10">
       <div className="w-full max-w-md">
@@ -161,9 +205,7 @@ const Monitor = () => {
         <h2 className="mb-3 text-2xl font-bold">Account Summary</h2>
 
         {!target && <p>No wallet address provided.</p>}
-
         {accountLoading && <p>Loading position...</p>}
-
         {accountError && <p className="text-red-500">Error: {accountError.message}</p>}
 
         {account && (
@@ -185,7 +227,6 @@ const Monitor = () => {
         {recordResult && (
           <div className="mt-3 text-sm">
             <p className="text-green-600">Recorded — sequence #{recordResult.sequenceNumber}</p>
-
             {recordResult.hashscanUrl && (
               <a className="link block" href={recordResult.hashscanUrl} target="_blank" rel="noreferrer">
                 View on HashScan
@@ -202,30 +243,43 @@ const Monitor = () => {
         {recordError && <p className="mt-3 text-sm text-red-500">Error: {recordError}</p>}
       </div>
 
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-2xl">
         <h2 className="mb-3 text-2xl font-bold">Markets</h2>
+        <p className="mb-2 text-xs text-gray-500">
+          Per-reserve configuration and this wallet&apos;s position in each asset, read directly from Bonzo&apos;s
+          testnet contracts.
+        </p>
 
         {reservesLoading && <p>Loading reserves...</p>}
-
         {reservesError && <p className="text-red-500">Error: {reservesError.message}</p>}
 
         {reserves && (
-          <ul className="space-y-2">
-            {reserves.map(reserve => (
-              <li key={reserve.tokenAddress} className="flex justify-between border-b py-2">
-                <span className="font-mono">{reserve.symbol}</span>
-
-                <span className="text-xs text-gray-500">{reserve.tokenAddress}</span>
-              </li>
-            ))}
-          </ul>
+          <div className="overflow-x-auto">
+            <table className="table table-sm">
+              <thead>
+                <tr>
+                  <th>Asset</th>
+                  <th>LTV</th>
+                  <th>Liq. threshold</th>
+                  <th>Supplied</th>
+                  <th>Variable debt</th>
+                  <th>Collateral</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reserves.map(reserve => (
+                  <ReserveRow key={reserve.tokenAddress} reserve={reserve} target={target} />
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
       <div className="w-full max-w-md">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-2xl font-bold">Snapshot History</h2>
-
           <button className="btn btn-sm" onClick={loadHistory} disabled={historyLoading}>
             {historyLoading ? "Loading..." : "Refresh"}
           </button>
@@ -240,7 +294,6 @@ const Monitor = () => {
                 #{entry.sequenceNumber} —{" "}
                 {new Date(Number(entry.consensusTimestamp.split(".")[0]) * 1000).toLocaleString()}
               </p>
-
               <p>
                 collateral: {String(entry.message.totalCollateral)} · debt: {String(entry.message.totalDebt)} · risk:{" "}
                 {String(entry.message.riskStatus ?? "—")} · account: {String(entry.message.account)}
