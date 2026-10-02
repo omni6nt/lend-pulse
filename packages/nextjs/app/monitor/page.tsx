@@ -152,11 +152,9 @@ const Monitor = () => {
     setHistoryLoading(true);
 
     try {
-      const topicId = process.env.NEXT_PUBLIC_HEDERA_TOPIC_ID;
-      if (!topicId) {
-        setHistory([]);
-        return;
-      }
+      // Falls back to the maintainer's public demo topic so a fresh clone shows real
+      // sample history immediately. Set NEXT_PUBLIC_HEDERA_TOPIC_ID to see your own.
+      const topicId = process.env.NEXT_PUBLIC_HEDERA_TOPIC_ID || "0.0.10759541";
       const res = await fetch(
         `https://testnet.mirrornode.hedera.com/api/v1/topics/${topicId}/messages?limit=25&order=desc`,
       );
@@ -279,7 +277,14 @@ const Monitor = () => {
 
       <div className="w-full max-w-md">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-2xl font-bold">Snapshot History</h2>
+          <div>
+            <h2 className="text-2xl font-bold">Snapshot History</h2>
+            {!process.env.NEXT_PUBLIC_HEDERA_TOPIC_ID && (
+              <p className="text-xs text-gray-500">
+                Showing sample history. Set your own topic to record and view yours.
+              </p>
+            )}
+          </div>
           <button className="btn btn-sm" onClick={loadHistory} disabled={historyLoading}>
             {historyLoading ? "Loading..." : "Refresh"}
           </button>
@@ -300,7 +305,7 @@ const Monitor = () => {
               </p>
               <a
                 className="link"
-                href={`https://testnet.mirrornode.hedera.com/api/v1/topics/${process.env.NEXT_PUBLIC_HEDERA_TOPIC_ID}/messages/${entry.sequenceNumber}`}
+                href={`https://testnet.mirrornode.hedera.com/api/v1/topics/${process.env.NEXT_PUBLIC_HEDERA_TOPIC_ID || "0.0.10759541"}/messages/${entry.sequenceNumber}`}
                 target="_blank"
                 rel="noreferrer"
               >
