@@ -90,16 +90,7 @@ const Monitor = () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          account: target,
-          totalCollateral,
-          totalDebt,
-          availableBorrows,
-          liquidationThreshold,
-          ltv,
-          healthFactor: healthFactorDisplay,
-          riskStatus,
-        }),
+        body: JSON.stringify({ account: target }),
       });
 
       const data = await response.json();
@@ -122,8 +113,13 @@ const Monitor = () => {
     setHistoryLoading(true);
 
     try {
+      const topicId = process.env.NEXT_PUBLIC_HEDERA_TOPIC_ID;
+      if (!topicId) {
+        setHistory([]);
+        return;
+      }
       const res = await fetch(
-        "https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10759541/messages?limit=25&order=desc",
+        `https://testnet.mirrornode.hedera.com/api/v1/topics/${topicId}/messages?limit=25&order=desc`,
       );
 
       const data = await res.json();
@@ -251,7 +247,7 @@ const Monitor = () => {
               </p>
               <a
                 className="link"
-                href={`https://testnet.mirrornode.hedera.com/api/v1/topics/0.0.10759541/messages/${entry.sequenceNumber}`}
+                href={`https://testnet.mirrornode.hedera.com/api/v1/topics/${process.env.NEXT_PUBLIC_HEDERA_TOPIC_ID}/messages/${entry.sequenceNumber}`}
                 target="_blank"
                 rel="noreferrer"
               >
