@@ -42,12 +42,14 @@ node --env-file=packages/nextjs/.env.local packages/nextjs/scripts/createTopic.m
 ## Environment
 
 `packages/nextjs/.env.local` (not committed) needs:
-```
+
 HEDERA_OPERATOR_ID=0.0.xxxxx
 HEDERA_OPERATOR_KEY=...
 HEDERA_TOPIC_ID=0.0.xxxxx
-```
-None of these should ever be prefixed `NEXT_PUBLIC_` — that would expose the operator key to the browser.
+NEXT_PUBLIC_HEDERA_TOPIC_ID=0.0.xxxxx
+ENABLE_SNAPSHOT_WRITES=true
+
+`ENABLE_SNAPSHOT_WRITES` is opt-in and off by default. Never prefix `HEDERA_OPERATOR_ID` or `HEDERA_OPERATOR_KEY` with `NEXT_PUBLIC_`, because that would expose the key to the browser.
 
 ## Frontend contract interaction
 

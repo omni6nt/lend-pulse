@@ -15,7 +15,7 @@
         {
           "steps": [
             {
-              "text": "This template reads Bonzo Finance lending data directly from its deployed contracts on Hedera testnet, and lets you anchor a point-in-time risk snapshot to HCS. Bonzo's lending pools are currently paused following a July 2026 oracle exploit, so live positions will show as empty — the read path still works and is demonstrated against real, deployed contracts."
+              "text": "This template reads Bonzo Finance lending data directly from its deployed contracts on Hedera testnet, and lets you anchor a point-in-time risk snapshot to HCS. Bonzo's lending pools were paused after a July 2026 oracle exploit, so most wallets will show empty positions. The read path still works against the real deployed contracts."
             }
           ]
         },
@@ -28,7 +28,7 @@
             },
             {
               "label": "Copy the environment file and fill in your operator credentials",
-              "text": "Copy packages/nextjs/.env.example to packages/nextjs/.env.local and set HEDERA_OPERATOR_ID and HEDERA_OPERATOR_KEY."
+              "text": "Copy packages/nextjs/.env.example to packages/nextjs/.env.local. Set HEDERA_OPERATOR_ID and HEDERA_OPERATOR_KEY, and set ENABLE_SNAPSHOT_WRITES=true to allow recording snapshots."
             },
             {
               "label": "Create your own HCS topic for snapshots",
@@ -36,7 +36,11 @@
             },
             {
               "label": "Add the printed Topic ID to your .env.local",
-              "text": "Set HEDERA_TOPIC_ID to the topic ID printed by the previous step."
+              "text": "Set both HEDERA_TOPIC_ID (used by the server to write) and NEXT_PUBLIC_HEDERA_TOPIC_ID (used by the browser to read history) to the topic ID printed by the previous step."
+            },
+            {
+              "label": "Run the tests",
+              "command": "yarn workspace @sh/nextjs test"
             },
             {
               "label": "Start the frontend",
@@ -47,7 +51,7 @@
               "url": "http://localhost:3000/monitor"
             },
             {
-              "text": "Paste any Hedera EVM wallet address to view its Bonzo position, or use your connected wallet. Click Record Snapshot to anchor the current risk data to HCS."
+              "text": "Paste any Hedera EVM wallet address to view its Bonzo position and the market table, or use your connected wallet. Click Record Snapshot to anchor the current risk data to HCS."
             }
           ]
         }
