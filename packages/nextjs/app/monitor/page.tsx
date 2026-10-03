@@ -7,24 +7,45 @@ import { useScaffoldReadContract } from "~~/hooks/scaffold-hbar";
 
 type Reserve = { symbol: string; tokenAddress: string };
 
-const ReserveRow = ({ reserve, target }: { reserve: Reserve; target: Address | undefined }) => {
+// Falls back to the maintainer's public demo topic so a fresh clone shows real sample
+// history immediately. Set NEXT_PUBLIC_HEDERA_TOPIC_ID to see your own.
+const TOPIC_ID = process.env.NEXT_PUBLIC_HEDERA_TOPIC_ID || "0.0.10759541";
+
+const shortAddress = (value: string) => (value.length > 14 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value);
+
+function riskBadgeClass(status?: string) {
+  switch (status) {
+    case "At Risk":
+      return "badge-error";
+    case "Caution":
+      return "badge-warning";
+    case "Healthy":
+      return "badge-success";
+    case "No Debt":
+      return "badge-neutral";
+    default:
+      return "badge-ghost";
+  }
+}
+
+const ReserveRow = ({ reserve, target }: { reserve: Reserve; target: string | undefined }) => {
   const { data: config } = useScaffoldReadContract({
     contractName: "BonzoDataProvider",
     functionName: "getReserveConfigurationData",
-    args: [reserve.tokenAddress as Address],
+    args: [reserve.tokenAddress],
   });
 
   const { data: userData } = useScaffoldReadContract({
     contractName: "BonzoDataProvider",
     functionName: "getUserReserveData",
-    args: [reserve.tokenAddress as Address, target],
+    args: [reserve.tokenAddress, target],
   });
 
   if (!config) {
     return (
       <tr>
-        <td className="font-mono">{reserve.symbol}</td>
-        <td colSpan={5} className="text-xs text-gray-500">
+        <td className="font-mono font-semibold">{reserve.symbol}</td>
+        <td colSpan={6} className="text-xs opacity-60">
           Loading...
         </td>
       </tr>
@@ -32,26 +53,34 @@ const ReserveRow = ({ reserve, target }: { reserve: Reserve; target: Address | u
   }
 
   const [, ltv, liquidationThreshold, , , , , , isActive, isFrozen] = config;
-  const supplied = userData ? formatUnits(userData[0], 18) : "—";
-  const variableDebt = userData ? formatUnits(userData[2], 18) : "—";
+  const supplied = userData ? formatUnits(userData[0], 18) : "-";
+  const variableDebt = userData ? formatUnits(userData[2], 18) : "-";
   const isCollateral = userData ? userData[8] : false;
 
+  const statusLabel = !isActive ? "Inactive" : isFrozen ? "Frozen" : "Active";
+  const statusBadge = !isActive ? "badge-error" : isFrozen ? "badge-warning" : "badge-success";
+
   return (
-    <tr className={!isActive || isFrozen ? "opacity-50" : ""}>
-      <td className="font-mono">{reserve.symbol}</td>
-      <td>{Number(ltv) / 100}%</td>
-      <td>{Number(liquidationThreshold) / 100}%</td>
-      <td>{supplied}</td>
-      <td>{variableDebt}</td>
-      <td>{target ? (isCollateral ? "Yes" : "No") : "—"}</td>
-      <td className="text-xs">
-        {!isActive && "Inactive"}
-        {isActive && isFrozen && "Frozen"}
-        {isActive && !isFrozen && "Active"}
+    <tr className="hover">
+      <td className="font-mono font-semibold">{reserve.symbol}</td>
+      <td className="text-right font-mono tabular-nums">{Number(ltv) / 100}%</td>
+      <td className="text-right font-mono tabular-nums">{Number(liquidationThreshold) / 100}%</td>
+      <td className="text-right font-mono tabular-nums">{supplied}</td>
+      <td className="text-right font-mono tabular-nums">{variableDebt}</td>
+      <td className="text-center">{target ? (isCollateral ? "Yes" : "No") : "-"}</td>
+      <td>
+        <span className={`badge badge-sm ${statusBadge}`}>{statusLabel}</span>
       </td>
     </tr>
   );
 };
+
+const StatTile = ({ label, value }: { label: string; value?: string }) => (
+  <div className="rounded-lg border border-base-300 bg-base-100 p-4">
+    <div className="text-xs font-medium uppercase tracking-wider opacity-60">{label}</div>
+    <div className="mt-1 truncate font-mono text-2xl font-semibold tabular-nums">{value ?? "-"}</div>
+  </div>
+);
 
 const Monitor = () => {
   const { address: connectedAddress } = useAccount();
@@ -75,7 +104,7 @@ const Monitor = () => {
   >([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  const target: Address | undefined = isAddress(input) ? (input as Address) : connectedAddress;
+  const target = isAddress(input) ? (input as Address) : connectedAddress;
 
   const {
     data: reserves,
@@ -152,11 +181,8 @@ const Monitor = () => {
     setHistoryLoading(true);
 
     try {
-      // Falls back to the maintainer's public demo topic so a fresh clone shows real
-      // sample history immediately. Set NEXT_PUBLIC_HEDERA_TOPIC_ID to see your own.
-      const topicId = process.env.NEXT_PUBLIC_HEDERA_TOPIC_ID || "0.0.10759541";
       const res = await fetch(
-        `https://testnet.mirrornode.hedera.com/api/v1/topics/${topicId}/messages?limit=25&order=desc`,
+        `https://testnet.mirrornode.hedera.com/api/v1/topics/${TOPIC_ID}/messages?limit=25&order=desc`,
       );
 
       const data = await res.json();
@@ -182,138 +208,207 @@ const Monitor = () => {
     void loadHistory();
   }, []);
 
+  useEffect(() => {
+    if (!recordResult) return;
+    const timer = setTimeout(() => setRecordResult(null), 15000);
+    return () => clearTimeout(timer);
+  }, [recordResult]);
+
   return (
-    <div className="flex flex-col items-center gap-8 px-4 pt-10">
-      <div className="w-full max-w-md">
-        <h1 className="mb-4 text-3xl font-bold">Bonzo Position Monitor</h1>
-
-        <input
-          className="input input-bordered w-full font-mono text-sm"
-          placeholder="Paste a wallet address"
-          value={input}
-          onChange={event => setInput(event.target.value.trim())}
-        />
-
-        {input && !isAddress(input) && <p className="mt-1 text-sm text-red-500">Not a valid EVM address.</p>}
-
-        <p className="mt-1 font-mono text-xs text-gray-500">Checking: {target ?? "no wallet connected"}</p>
-      </div>
-
-      <div className="w-full max-w-md">
-        <h2 className="mb-3 text-2xl font-bold">Account Summary</h2>
-
-        {!target && <p>No wallet address provided.</p>}
-        {accountLoading && <p>Loading position...</p>}
-        {accountError && <p className="text-red-500">Error: {accountError.message}</p>}
-
-        {account && (
-          <div className="space-y-2 font-mono text-sm">
-            <p>Total collateral: {totalCollateral}</p>
-            <p>Total debt: {totalDebt}</p>
-            <p>Available to borrow: {availableBorrows}</p>
-            <p>Liquidation threshold: {liquidationThreshold}</p>
-            <p>Max LTV: {ltv}</p>
-            <p>Health factor: {healthFactorDisplay}</p>
-            <p>Risk status: {riskStatus}</p>
-
-            <button className="btn btn-primary mt-4" disabled={recording} onClick={handleRecordSnapshot}>
-              {recording ? "Recording..." : "Record Snapshot"}
-            </button>
-          </div>
-        )}
-
-        {recordResult && (
-          <div className="mt-3 text-sm">
-            <p className="text-green-600">Recorded — sequence #{recordResult.sequenceNumber}</p>
-            {recordResult.hashscanUrl && (
-              <a className="link block" href={recordResult.hashscanUrl} target="_blank" rel="noreferrer">
-                View on HashScan
-              </a>
-            )}
-            {recordResult.mirrorNodeUrl && (
-              <a className="link block" href={recordResult.mirrorNodeUrl} target="_blank" rel="noreferrer">
-                View raw message on Mirror Node
-              </a>
-            )}
-          </div>
-        )}
-
-        {recordError && <p className="mt-3 text-sm text-red-500">Error: {recordError}</p>}
-      </div>
-
-      <div className="w-full max-w-2xl">
-        <h2 className="mb-3 text-2xl font-bold">Markets</h2>
-        <p className="mb-2 text-xs text-gray-500">
-          Per-reserve configuration and this wallet&apos;s position in each asset, read directly from Bonzo&apos;s
-          testnet contracts.
+    <div className="mx-auto flex w-full max-w-[1760px] flex-col gap-6 px-4 pb-8 pt-6 lg:px-6 xl:px-8">
+      <div>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-3xl font-extrabold tracking-tight">Bonzo Position Monitor</h1>
+          <span className="badge badge-outline badge-sm">Hedera Testnet</span>
+        </div>
+        <p className="mt-1 text-sm opacity-70">
+          Lending risk observability on Hedera testnet, anchored to Hedera Consensus Service.
         </p>
-
-        {reservesLoading && <p>Loading reserves...</p>}
-        {reservesError && <p className="text-red-500">Error: {reservesError.message}</p>}
-
-        {reserves && (
-          <div className="overflow-x-auto">
-            <table className="table table-sm">
-              <thead>
-                <tr>
-                  <th>Asset</th>
-                  <th>LTV</th>
-                  <th>Liq. threshold</th>
-                  <th>Supplied</th>
-                  <th>Variable debt</th>
-                  <th>Collateral</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reserves.map(reserve => (
-                  <ReserveRow key={reserve.tokenAddress} reserve={reserve} target={target} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
 
-      <div className="w-full max-w-md">
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold">Snapshot History</h2>
-            {!process.env.NEXT_PUBLIC_HEDERA_TOPIC_ID && (
-              <p className="text-xs text-gray-500">
-                Showing sample history. Set your own topic to record and view yours.
-              </p>
-            )}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+        <div className="flex min-w-0 flex-col gap-6">
+          <div className="card border border-base-300 bg-base-200 shadow-sm">
+            <div className="card-body gap-3">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-xs font-semibold uppercase tracking-widest opacity-70">Monitored account</h2>
+                {riskStatus && <span className={`badge ${riskBadgeClass(riskStatus)}`}>{riskStatus}</span>}
+              </div>
+              <input
+                className="input input-bordered w-full font-mono text-sm"
+                placeholder="Paste a Hedera EVM wallet address (defaults to your connected wallet)"
+                value={input}
+                onChange={event => setInput(event.target.value.trim())}
+              />
+              {input && !isAddress(input) && <p className="text-sm text-error">Not a valid EVM address.</p>}
+              <p className="break-all font-mono text-xs opacity-70">{target ?? "No wallet connected"}</p>
+            </div>
           </div>
-          <button className="btn btn-sm" onClick={loadHistory} disabled={historyLoading}>
-            {historyLoading ? "Loading..." : "Refresh"}
-          </button>
+
+          <div className="card border border-base-300 bg-base-200 shadow-sm">
+            <div className="card-body gap-4">
+              <h2 className="text-xs font-semibold uppercase tracking-widest opacity-70">Account summary</h2>
+
+              {!target && <p className="text-sm opacity-70">No wallet address provided.</p>}
+              {accountLoading && <p className="text-sm opacity-70">Loading position...</p>}
+              {accountError && <p className="text-sm text-error">Error: {accountError.message}</p>}
+
+              {account && (
+                <>
+                  <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                    <StatTile label="Collateral" value={totalCollateral} />
+                    <StatTile label="Debt" value={totalDebt} />
+                    <StatTile label="Available to borrow" value={availableBorrows} />
+                    <StatTile label="Health factor" value={healthFactorDisplay} />
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-base-300 pt-4">
+                    <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm opacity-70">
+                      <span>Liquidation threshold: {liquidationThreshold}</span>
+                      <span>Max LTV: {ltv}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="hidden text-xs opacity-60 md:inline">
+                        Anchors this position to Hedera Consensus Service
+                      </span>
+                      <button className="btn btn-primary" disabled={recording} onClick={handleRecordSnapshot}>
+                        {recording ? "Recording..." : "Record Snapshot"}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {recordResult && (
+                <div className="alert alert-success text-sm">
+                  <div>
+                    <p className="font-semibold">Recorded - sequence #{recordResult.sequenceNumber}</p>
+                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                      {recordResult.hashscanUrl && (
+                        <a className="link" href={recordResult.hashscanUrl} target="_blank" rel="noreferrer">
+                          View on HashScan
+                        </a>
+                      )}
+                      {recordResult.mirrorNodeUrl && (
+                        <a className="link" href={recordResult.mirrorNodeUrl} target="_blank" rel="noreferrer">
+                          View raw message on Mirror Node
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    className="btn btn-ghost btn-xs"
+                    onClick={() => setRecordResult(null)}
+                    aria-label="Dismiss message"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+
+              {recordError && (
+                <div className="alert alert-warning text-sm">
+                  <span>{recordError}</span>
+                  <button
+                    className="btn btn-ghost btn-xs"
+                    onClick={() => setRecordError(null)}
+                    aria-label="Dismiss error"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="card border border-base-300 bg-base-200 shadow-sm">
+            <div className="card-body gap-3">
+              <div>
+                <h2 className="text-xs font-semibold uppercase tracking-widest opacity-70">Bonzo markets</h2>
+                <p className="mt-1 text-xs opacity-60">
+                  Per-reserve configuration and this wallet&apos;s position, read directly from Bonzo&apos;s testnet
+                  contracts.
+                </p>
+              </div>
+
+              {reservesLoading && <p className="text-sm opacity-70">Loading reserves...</p>}
+              {reservesError && <p className="text-sm text-error">Error: {reservesError.message}</p>}
+
+              {reserves && (
+                <div className="overflow-x-auto">
+                  <table className="table table-zebra">
+                    <thead>
+                      <tr className="text-xs uppercase tracking-wider">
+                        <th>Asset</th>
+                        <th className="text-right">LTV</th>
+                        <th className="text-right">Liq. threshold</th>
+                        <th className="text-right">Supplied</th>
+                        <th className="text-right">Variable debt</th>
+                        <th className="text-center">Collateral</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reserves.map(reserve => (
+                        <ReserveRow key={reserve.tokenAddress} reserve={reserve} target={target} />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
-        {history.length === 0 && <p className="text-sm text-gray-500">No snapshots loaded yet.</p>}
+        <div className="card border border-base-300 bg-base-200 shadow-sm lg:h-[calc(100vh-9rem)] lg:min-h-[480px]">
+          <div className="card-body min-h-0 flex-1 gap-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h2 className="text-xs font-semibold uppercase tracking-widest opacity-70">Snapshot history</h2>
+                <p className="mt-1 text-xs opacity-60">
+                  Read live from the public Mirror Node
+                  {!process.env.NEXT_PUBLIC_HEDERA_TOPIC_ID ? " (sample topic)" : ""}.
+                </p>
+              </div>
+              <button className="btn btn-sm" onClick={loadHistory} disabled={historyLoading}>
+                {historyLoading ? "Loading..." : "Refresh"}
+              </button>
+            </div>
 
-        <ul className="space-y-2">
-          {history.map(entry => (
-            <li key={entry.sequenceNumber} className="border-b py-2 text-xs font-mono">
-              <p>
-                #{entry.sequenceNumber} —{" "}
-                {new Date(Number(entry.consensusTimestamp.split(".")[0]) * 1000).toLocaleString()}
-              </p>
-              <p>
-                collateral: {String(entry.message.totalCollateral)} · debt: {String(entry.message.totalDebt)} · risk:{" "}
-                {String(entry.message.riskStatus ?? "—")} · account: {String(entry.message.account)}
-              </p>
-              <a
-                className="link"
-                href={`https://testnet.mirrornode.hedera.com/api/v1/topics/${process.env.NEXT_PUBLIC_HEDERA_TOPIC_ID || "0.0.10759541"}/messages/${entry.sequenceNumber}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                View raw message
-              </a>
-            </li>
-          ))}
-        </ul>
+            {history.length === 0 && <p className="text-sm opacity-60">No snapshots loaded yet.</p>}
+
+            <ul className="flex max-h-[32rem] min-h-0 flex-col gap-2 overflow-y-auto pr-1 lg:max-h-none lg:flex-1">
+              {history.map(entry => {
+                const risk = entry.message.riskStatus ? String(entry.message.riskStatus) : undefined;
+                return (
+                  <li key={entry.sequenceNumber} className="rounded-lg border border-base-300 bg-base-100 p-3 text-xs">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-mono text-sm font-semibold">#{entry.sequenceNumber}</p>
+                        <p className="opacity-60">
+                          {new Date(Number(entry.consensusTimestamp.split(".")[0]) * 1000).toLocaleString()}
+                        </p>
+                      </div>
+                      <span className={`badge badge-sm ${riskBadgeClass(risk)}`}>{risk ?? "N/A"}</span>
+                    </div>
+                    <p className="mt-2 font-mono opacity-70">
+                      collateral {String(entry.message.totalCollateral)} / debt {String(entry.message.totalDebt)}
+                    </p>
+                    <p className="font-mono opacity-70">{shortAddress(String(entry.message.account))}</p>
+                    <a
+                      className="link mt-1 inline-block"
+                      href={`https://testnet.mirrornode.hedera.com/api/v1/topics/${TOPIC_ID}/messages/${entry.sequenceNumber}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      View raw message
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
       </div>
     </div>
   );
