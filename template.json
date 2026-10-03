@@ -38,10 +38,7 @@
               "label": "Add the printed Topic ID to your .env.local",
               "text": "Set both HEDERA_TOPIC_ID (used by the server to write) and NEXT_PUBLIC_HEDERA_TOPIC_ID (used by the browser to read history) to the topic ID printed by the previous step."
             },
-            {
-              "label": "Run the tests",
-              "command": "yarn workspace @sh/nextjs test"
-            },
+
             {
               "label": "Start the frontend",
               "command": "{run:next:dev}"
