@@ -18,6 +18,8 @@ Scaffold your own copy:
 npm create scaffold-hbar@latest -- --template omni6nt/lend-pulse
 ```
 
+If the CLI asks for framework choices, pick Next.js (App Router) and Hardhat. This template contains only a Hardhat package.
+
 Or clone this repository, then:
 
 1. Run `yarn install`
